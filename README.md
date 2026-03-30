@@ -6,7 +6,7 @@ The AI Attendance System is a browser-based application that automates attendanc
 
 ---
 
-## Features
+## Features 
 
 * Face enrollment with name and roll number
 * Real-time face detection and recognition using the device camera
