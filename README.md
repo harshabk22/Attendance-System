@@ -68,6 +68,6 @@ The AI Attendance System is a browser-based application that automates attendanc
 
 ## Author
 
-Harsha
-
+- Harsha
+- Rupesh
 ---
