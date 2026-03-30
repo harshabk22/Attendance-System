@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Attendance System</title>
+<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  header { background: #1a1d2e; border-bottom: 1px solid #2d3748; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+  header .status { font-size: 13px; color: #68d391; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #68d391; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+  .layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; height: calc(100vh - 57px); }
+
+  .camera-panel { position: relative; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  #videoEl { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  #overlay { position: absolute; top: 0; left: 0; }
+  .camera-controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; }
+  .cam-btn { background: rgba(255,255,255,0.15); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 10px 20px; border-radius: 24px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background .2s; }
+  .cam-btn:hover { background: rgba(255,255,255,0.25); }
+  .cam-btn.primary { background: #4f46e5; border-color: #4f46e5; }
+  .cam-btn.primary:hover { background: #4338ca; }
+  .cam-btn.danger { background: #e53e3e; border-color: #e53e3e; }
+  .loading-overlay { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 10; }
+  .loading-overlay p { color: #a0aec0; font-size: 14px; }
+  .spinner { width: 40px; height: 40px; border: 3px solid #2d3748; border-top-color: #4f46e5; border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .side-panel { background: #1a1d2e; border-left: 1px solid #2d3748; display: flex; flex-direction: column; overflow: hidden; }
+  .tabs { display: flex; border-bottom: 1px solid #2d3748; }
+  .tab { flex: 1; padding: 12px; text-align: center; font-size: 13px; font-weight: 500; cursor: pointer; color: #718096; border-bottom: 2px solid transparent; transition: all .2s; }
+  .tab.active { color: #fff; border-bottom-color: #4f46e5; }
+  .tab-content { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+  .tab-content.active { display: block; }
+
+  .enroll-form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+  .enroll-form input { background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0; padding: 10px 12px; border-radius: 8px; font-size: 14px; width: 100%; }
+  .enroll-form input:focus { outline: none; border-color: #4f46e5; }
+  .enroll-form input::placeholder { color: #4a5568; }
+  .btn { padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; width: 100%; transition: background .2s; }
+  .btn-primary { background: #4f46e5; color: #fff; }
+  .btn-primary:hover { background: #4338ca; }
+  .btn-secondary { background: #2d3748; color: #e2e8f0; }
+  .btn-secondary:hover { background: #374151; }
+  .btn-success { background: #276749; color: #fff; }
+  .btn-success:hover { background: #22543d; }
+
+  .student-list { display: flex; flex-direction: column; gap: 8px; }
+  .student-item { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
+  .student-info { display: flex; flex-direction: column; }
+  .student-name { font-size: 14px; font-weight: 500; color: #e2e8f0; }
+  .student-roll { font-size: 12px; color: #718096; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid #4f46e5; }
+  .avatar-placeholder { width: 36px; height: 36px; border-radius: 50%; background: #4f46e5; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: #fff; }
+  .del-btn { background: none; border: none; color: #fc8181; cursor: pointer; font-size: 16px; padding: 4px; }
+
+  .attendance-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .attendance-header h3 { font-size: 14px; font-weight: 600; }
+  .badge { background: #276749; color: #9ae6b4; font-size: 12px; padding: 2px 8px; border-radius: 12px; font-weight: 500; }
+  .attendance-list { display: flex; flex-direction: column; gap: 6px; }
+  .att-item { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; }
+  .att-name { font-size: 14px; font-weight: 500; }
+  .att-time { font-size: 12px; color: #68d391; }
+  .att-roll { font-size: 12px; color: #718096; }
+  .empty-state { text-align: center; color: #4a5568; font-size: 13px; padding: 40px 20px; }
+
+  .info-bar { background: #0f1117; border-bottom: 1px solid #2d3748; padding: 8px 16px; display: flex; gap: 16px; font-size: 12px; color: #718096; }
+  .info-bar span { color: #a0aec0; font-weight: 500; }
+
+  .section-title { font-size: 12px; font-weight: 600; color: #718096; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px; }
+
+  #captureCanvas { display: none; }
+  .capture-preview { width: 100%; border-radius: 8px; border: 2px solid #4f46e5; margin: 8px 0; display: none; }
+
+  .alert { padding: 10px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
+  .alert-info { background: #1e3a5f; color: #90cdf4; border: 1px solid #2b6cb0; }
+  .alert-success { background: #1c4532; color: #9ae6b4; border: 1px solid #276749; }
+  .alert-warn { background: #5a3810; color: #fbd38d; border: 1px solid #b7791f; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI Attendance System</h1>
+  <div class="status"><div class="dot"></div><span id="statusText">Loading models...</span></div>
+</header>
+
+<div class="layout">
+  <div class="camera-panel">
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="spinner"></div>
+      <p id="loadingMsg">Loading face recognition models...</p>
+    </div>
+    <video id="videoEl" autoplay muted playsinline></video>
+    <canvas id="overlay"></canvas>
+    <div class="camera-controls">
+      <button class="cam-btn" onclick="switchCamera()">Flip Camera</button>
+      <button class="cam-btn primary" id="takeAttBtn" onclick="takeAttendance()">Take Attendance</button>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="info-bar">
+      <div>Students: <span id="studentCount">0</span></div>
+      <div>Present today: <span id="presentCount">0</span></div>
+      <div id="clockEl"></div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('enroll')">Enroll</div>
+      <div class="tab" onclick="switchTab('students')">Students</div>
+      <div class="tab" onclick="switchTab('attendance')">Attendance</div>
+    </div>
+
+    <div id="tab-enroll" class="tab-content active">
+      <div class="alert alert-info">Point face at camera, enter name & roll, then click Capture.</div>
+      <div class="enroll-form">
+        <input type="text" id="nameInput" placeholder="Student name (e.g. Harsha)" />
+        <input type="text" id="rollInput" placeholder="Roll number (e.g. CS101)" />
+        <button class="btn btn-secondary" onclick="capturePhoto()">Capture Photo</button>
+        <img id="capturePreview" class="capture-preview" />
+        <button class="btn btn-primary" id="enrollBtn" onclick="enrollStudent()" disabled>Enroll Student</button>
+      </div>
+    </div>
+
+    <div id="tab-students" class="tab-content">
+      <div class="section-title">Enrolled Students</div>
+      <div class="student-list" id="studentList">
+        <div class="empty-state">No students enrolled yet.<br>Go to Enroll tab to add students.</div>
+      </div>
+    </div>
+
+    <div id="tab-attendance" class="tab-content">
+      <div class="attendance-header">
+        <h3>Today's Attendance</h3>
+        <span class="badge" id="presentBadge">0 present</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="btn btn-success" style="flex:1" onclick="exportCSV()">Export CSV</button>
+      </div>
+      <div class="attendance-list" id="attendanceList">
+        <div class="empty-state">No attendance yet.<br>Use "Take Attendance" button.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<canvas id="captureCanvas"></canvas>
+
+<script>
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model';
+
+let students = JSON.parse(localStorage.getItem('students') || '[]');
+let attendance = JSON.parse(localStorage.getItem('attendance') || '[]');
+let labeledDescriptors = [];
+let stream = null;
+let faceMatcher = null;
+let cameraFacing = 'user';
+let capturedDescriptor = null;
+let capturedImageDataUrl = null;
+let detectionLoop = null;
+
+const video = document.getElementById('videoEl');
+const overlayCanvas = document.getElementById('overlay');
+const captureCanvas = document.getElementById('captureCanvas');
+
+async function init() {
+  try {
+    document.getElementById('loadingMsg').textContent = 'Loading face detection model...';
+    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+    document.getElementById('loadingMsg').textContent = 'Loading face landmark model...';
+    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+    document.getElementById('loadingMsg').textContent = 'Loading face recognition model...';
+    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    document.getElementById('statusText').textContent = 'Models ready';
+    await startCamera();
+    document.getElementById('loadingOverlay').style.display = 'none';
+    buildMatcher();
+    startDetection();
+    renderStudents();
+    renderAttendance();
+    updateCounts();
+    setInterval(updateClock, 1000);
+    updateClock();
+  } catch(e) {
+    document.getElementById('loadingMsg').textContent = 'Error: ' + e.message + '. Try refreshing or use Chrome.';
+    console.error(e);
+  }
+}
+
+async function startCamera() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); }
+  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacing, width: 1280, height: 720 } });
+  video.srcObject = stream;
+  await new Promise(r => video.onloadedmetadata = r);
+  overlayCanvas.width = video.videoWidth;
+  overlayCanvas.height = video.videoHeight;
+}
+
+function switchCamera() {
+  cameraFacing = cameraFacing === 'user' ? 'environment' : 'user';
+  startCamera();
+}
+
+function startDetection() {
+  if (detectionLoop) cancelAnimationFrame(detectionLoop);
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+  const ctx = overlayCanvas.getContext('2d');
+
+  async function loop() {
+    if (video.readyState === 4) {
+      const detections = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceDescriptors();
+      const dims = { width: video.videoWidth, height: video.videoHeight };
+      const resized = faceapi.resizeResults(detections, dims);
+      ctx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+      resized.forEach(det => {
+        const { x, y, width, height } = det.detection.box;
+        const mx = overlayCanvas.width - x - width;
+        let label = 'Unknown', color = '#fc8181', conf = '';
+
+        if (faceMatcher) {
+          const match = faceMatcher.findBestMatch(det.descriptor);
+          if (match.label !== 'unknown') {
+            label = match.label;
+            conf = ' ' + Math.round((1 - match.distance) * 100) + '%';
+            color = '#68d391';
+          }
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(mx, y, width, height);
+
+        const text = label + conf;
+        ctx.font = '14px system-ui';
+        const tw = ctx.measureText(text).width;
+        ctx.fillStyle = color;
+        ctx.fillRect(mx, y + height, tw + 12, 22);
+        ctx.fillStyle = '#000';
+        ctx.fillText(text, mx + 6, y + height + 15);
+      });
+    }
+    detectionLoop = requestAnimationFrame(loop);
+  }
+  loop();
+}
+
+async function capturePhoto() {
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+  const det = await faceapi.detectSingleFace(video, opts).withFaceLandmarks().withFaceDescriptor();
+
+  if (!det) {
+    alert('No face detected. Please face the camera directly.');
+    return;
+  }
+
+  capturedDescriptor = det.descriptor;
+  captureCanvas.width = video.videoWidth;
+  captureCanvas.height = video.videoHeight;
+  const ctx = captureCanvas.getContext('2d');
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, -video.videoWidth, 0);
+  capturedImageDataUrl = captureCanvas.toDataURL('image/jpeg', 0.8);
+
+  const preview = document.getElementById('capturePreview');
+  preview.src = capturedImageDataUrl;
+  preview.style.display = 'block';
+  document.getElementById('enrollBtn').disabled = false;
+}
+
+function enrollStudent() {
+  const name = document.getElementById('nameInput').value.trim();
+  const roll = document.getElementById('rollInput').value.trim();
+  if (!name || !roll) { alert('Please enter both name and roll number.'); return; }
+  if (!capturedDescriptor) { alert('Please capture a photo first.'); return; }
+
+  const existing = students.find(s => s.roll === roll);
+  if (existing) { alert('Roll number already enrolled. Delete existing entry first.'); return; }
+
+  students.push({ name, roll, descriptor: Array.from(capturedDescriptor), photo: capturedImageDataUrl });
+  saveStudents();
+  buildMatcher();
+  renderStudents();
+  updateCounts();
+
+  document.getElementById('nameInput').value = '';
+  document.getElementById('rollInput').value = '';
+  document.getElementById('capturePreview').style.display = 'none';
+  document.getElementById('enrollBtn').disabled = true;
+  capturedDescriptor = null;
+  switchTab('students');
+}
+
+function deleteStudent(roll) {
+  if (!confirm('Remove this student?')) return;
+  students = students.filter(s => s.roll !== roll);
+  saveStudents();
+  buildMatcher();
+  renderStudents();
+  updateCounts();
+}
+
+function buildMatcher() {
+  if (!students.length) { faceMatcher = null; return; }
+  labeledDescriptors = students.map(s =>
+    new faceapi.LabeledFaceDescriptors(s.name + '|' + s.roll, [new Float32Array(s.descriptor)])
+  );
+  faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5);
+}
+
+async function takeAttendance() {
+  const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+  const dets = await faceapi.detectAllFaces(video, opts).withFaceLandmarks().withFaceDescriptors();
+
+  if (!dets.length) { alert('No faces detected in frame.'); return; }
+  if (!faceMatcher) { alert('No students enrolled yet. Please enroll students first.'); return; }
+
+  let newCount = 0;
+  const today = new Date().toISOString().slice(0,10);
+  const now = new Date().toLocaleTimeString();
+
+  dets.forEach(det => {
+    const match = faceMatcher.findBestMatch(det.descriptor);
+    if (match.label === 'unknown') return;
+    const [name, roll] = match.label.split('|');
+    const alreadyMarked = attendance.some(a => a.roll === roll && a.date === today);
+    if (!alreadyMarked) {
+      attendance.push({ name, roll, date: today, time: now, status: 'Present' });
+      newCount++;
+    }
+  });
+
+  saveAttendance();
+  renderAttendance();
+  updateCounts();
+  if (newCount > 0) {
+    document.getElementById('statusText').textContent = newCount + ' student(s) marked present!';
+    setTimeout(() => document.getElementById('statusText').textContent = 'Models ready', 3000);
+  } else {
+    alert('All detected students already marked present today.');
+  }
+  switchTab('attendance');
+}
+
+function renderStudents() {
+  const list = document.getElementById('studentList');
+  if (!students.length) {
+    list.innerHTML = '<div class="empty-state">No students enrolled yet.<br>Go to Enroll tab to add students.</div>';
+    return;
+  }
+  list.innerHTML = students.map(s => `
+    <div class="student-item">
+      <div style="display:flex;align-items:center;gap:10px;">
+        ${s.photo ? `<img class="avatar" src="${s.photo}" />` : `<div class="avatar-placeholder">${s.name[0]}</div>`}
+        <div class="student-info">
+          <span class="student-name">${s.name}</span>
+          <span class="student-roll">${s.roll}</span>
+        </div>
+      </div>
+      <button class="del-btn" onclick="deleteStudent('${s.roll}')">✕</button>
+    </div>
+  `).join('');
+}
+
+function renderAttendance() {
+  const today = new Date().toISOString().slice(0,10);
+  const todayAtt = attendance.filter(a => a.date === today);
+  const list = document.getElementById('attendanceList');
+  const badge = document.getElementById('presentBadge');
+  badge.textContent = todayAtt.length + ' present';
+
+  if (!todayAtt.length) {
+    list.innerHTML = '<div class="empty-state">No attendance yet.<br>Use "Take Attendance" button.</div>';
+    return;
+  }
+  list.innerHTML = todayAtt.map(a => `
+    <div class="att-item">
+      <div>
+        <div class="att-name">${a.name}</div>
+        <div class="att-roll">${a.roll}</div>
+      </div>
+      <div class="att-time">${a.time}</div>
+    </div>
+  `).join('');
+}
+
+function updateCounts() {
+  document.getElementById('studentCount').textContent = students.length;
+  const today = new Date().toISOString().slice(0,10);
+  const p = attendance.filter(a => a.date === today).length;
+  document.getElementById('presentCount').textContent = p;
+  document.getElementById('presentBadge').textContent = p + ' present';
+}
+
+function updateClock() {
+  document.getElementById('clockEl').textContent = new Date().toLocaleTimeString();
+}
+
+function exportCSV() {
+  if (!attendance.length) { alert('No attendance data to export.'); return; }
+  const header = 'Name,Roll Number,Date,Time,Status\n';
+  const rows = attendance.map(a => `${a.name},${a.roll},${a.date},${a.time},${a.status}`).join('\n');
+  const blob = new Blob([header + rows], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'attendance_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach((t,i) => {
+    const names = ['enroll','students','attendance'];
+    t.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-content').forEach(c => {
+    c.classList.toggle('active', c.id === 'tab-' + name);
+  });
+}
+
+function saveStudents() { localStorage.setItem('students', JSON.stringify(students)); }
+function saveAttendance() { localStorage.setItem('attendance', JSON.stringify(attendance)); }
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>
